@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Colour Identification System</title>
 <style>
-* {
-    box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 body {
     margin: 0;
     font-family: Arial, sans-serif;
@@ -17,39 +15,50 @@ body {
     padding: 20px;
 }
 .container {
-    max-width: 650px;
+    max-width: 700px;
     margin: 20px auto;
     padding: 25px;
     background: white;
     border-radius: 20px;
     box-shadow: 0 8px 25px #00000018;
 }
-h1 {
-    color: #6c35a5;
-}
-p {
-    line-height: 1.5;
-}
-video {
+h1 { color: #6c35a5; }
+p { line-height: 1.5; }
+video, #uploadedImage {
     width: 100%;
     max-height: 400px;
+    object-fit: contain;
     background: #222;
     border-radius: 12px;
     margin-top: 15px;
 }
-button {
+#uploadedImage {
+    background: #f5f5f5;
+    cursor: crosshair;
+}
+button, select, input[type="file"] {
+    max-width: 100%;
     border: none;
-    padding: 13px 18px;
+    padding: 12px 14px;
     margin: 7px 4px;
     border-radius: 10px;
+    font-size: 16px;
+}
+button {
     background: #6c35a5;
     color: white;
-    font-size: 16px;
     cursor: pointer;
 }
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+select {
+    background: #f3e8ff;
+    color: #332047;
+    border: 1px solid #d5bce9;
+}
+input[type="file"] {
+    background: #f7f2fc;
+    border: 1px solid #d5bce9;
+    width: 100%;
 }
 #swatch {
     width: 100%;
@@ -59,53 +68,64 @@ button:disabled {
     border: 1px solid #ddd;
     margin: 15px 0;
 }
-#colourName {
-    font-size: 25px;
-    font-weight: bold;
+#colourName { font-size: 25px; font-weight: bold; }
+#hexCode { font-size: 19px; color: #555; }
+#status { color: #555; overflow-wrap: anywhere; }
+.note { font-size: 13px; color: #666; }
+.section {
+    margin-top: 22px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
 }
-#hexCode {
-    font-size: 19px;
-    color: #555;
-}
-#status {
-    color: #555;
-    overflow-wrap: anywhere;
-}
-.note {
-    font-size: 13px;
-    color: #666;
-}
-footer {
-    margin-top: 20px;
-    font-size: 13px;
-    color: #777;
-}
+footer { margin-top: 20px; font-size: 13px; color: #777; }
+[hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <div class="container">
     <h1>🎨 Colour Identification System</h1>
-    <p>Point your camera at an object to identify its colour.</p>
+    <p>Identify colours using your camera or an uploaded image.</p>
 
-    <video id="video" autoplay playsinline muted></video>
+    <div class="section">
+        <h2>📷 Live Camera</h2>
+        <video id="video" autoplay playsinline muted></video>
+        <div>
+            <button id="startButton">📷 Start Camera</button>
+            <button id="stopButton" disabled>⏹ Stop Camera</button>
+        </div>
+    </div>
 
-    <div>
-        <button id="startButton">📷 Start Camera</button>
-        <button id="stopButton" disabled>⏹ Stop Camera</button>
+    <div class="section">
+        <h2>🖼️ Upload an Image</h2>
+        <p class="note">Choose an image, then click any point on it to identify that colour.</p>
+        <input id="imageInput" type="file" accept="image/*">
+        <img id="uploadedImage" alt="Uploaded image preview" hidden>
+        <button id="removeImageButton" hidden>Remove Uploaded Image</button>
+    </div>
+
+    <div class="section">
+        <h2>🔊 Voice Settings</h2>
+        <label for="languageSelect"><strong>Voice language:</strong></label>
+        <br>
+        <select id="languageSelect">
+            <option value="en-US">English</option>
+            <option value="hi-IN">हिंदी (Hindi)</option>
+            <option value="kn-IN">ಕನ್ನಡ (Kannada)</option>
+        </select>
         <button id="voiceButton">🔊 Voice: ON</button>
     </div>
 
-    <p id="status">Press Start Camera and allow camera access.</p>
-
-    <div id="swatch"></div>
+    <p id="status" role="status">Start the camera or upload an image.</p>
+    <div id="swatch" aria-label="Detected colour preview"></div>
     <div id="colourName">Waiting for colour...</div>
     <div id="hexCode">HEX: --</div>
 
     <p class="note">
-        Colours are estimated from the centre of the camera image.
-        Lighting can affect the result.
+        Colours are estimates. Lighting, image quality, and screen settings can affect the result.
     </p>
-
+    <p class="note">
+        Voice output depends on the languages supported by your browser and device.
+    </p>
     <footer>Colour Identification System | Web Application</footer>
 </div>
 
@@ -122,12 +142,18 @@ const swatch = document.getElementById("swatch");
 const startButton = document.getElementById("startButton");
 const stopButton = document.getElementById("stopButton");
 const voiceButton = document.getElementById("voiceButton");
+const languageSelect = document.getElementById("languageSelect");
+const imageInput = document.getElementById("imageInput");
+const uploadedImage = document.getElementById("uploadedImage");
+const removeImageButton = document.getElementById("removeImageButton");
 
 let stream = null;
 let timer = null;
 let voiceOn = true;
 let lastSpoken = "";
 let lastSpokenTime = 0;
+let currentColourName = "";
+let imageObjectUrl = null;
 
 const colours = [
     ["Black", 0, 0, 0],
@@ -172,6 +198,49 @@ const colours = [
     ["Mustard", 255, 219, 88]
 ];
 
+const translations = {
+    "Black": ["काला", "ಕಪ್ಪು"],
+    "White": ["सफेद", "ಬಿಳಿ"],
+    "Red": ["लाल", "ಕೆಂಪು"],
+    "Green": ["हरा", "ಹಸಿರು"],
+    "Blue": ["नीला", "ನೀಲಿ"],
+    "Yellow": ["पीला", "ಹಳದಿ"],
+    "Orange": ["नारंगी", "ಕಿತ್ತಳೆ"],
+    "Purple": ["बैंगनी", "ನೇರಳೆ"],
+    "Pink": ["गुलाबी", "ಗುಲಾಬಿ"],
+    "Brown": ["भूरा", "ಕಂದು"],
+    "Gray": ["धूसर", "ಬೂದು"],
+    "Cyan": ["सियान", "ಸಯಾನ್"],
+    "Magenta": ["मैजेंटा", "ಮ್ಯಾಜೆಂಟಾ"],
+    "Lime": ["लाइम", "ಲೈಮ್"],
+    "Navy": ["नेवी नीला", "ಕಡು ನೀಲಿ"],
+    "Maroon": ["मैरून", "ಮರೂನ್"],
+    "Olive": ["ऑलिव", "ಆಲಿವ್"],
+    "Teal": ["टील", "ಟೀಲ್"],
+    "Silver": ["चाँदी", "ಬೆಳ್ಳಿ"],
+    "Gold": ["सुनहरा", "ಚಿನ್ನದ ಬಣ್ಣ"],
+    "Coral": ["कोरल", "ಕೋರಲ್"],
+    "Salmon": ["सैल्मन", "ಸಾಲ್ಮನ್"],
+    "Violet": ["जामुनी", "ನೇರಳೆ"],
+    "Indigo": ["इंडिगो", "ಇಂಡಿಗೋ"],
+    "Sky Blue": ["आसमानी", "ಆಕಾಶ ನೀಲಿ"],
+    "Chocolate": ["चॉकलेटी", "ಚಾಕೊಲೇಟ್ ಬಣ್ಣ"],
+    "Beige": ["बेज", "ಬೀಜ್"],
+    "Khaki": ["खाकी", "ಖಾಕಿ"],
+    "Turquoise": ["फ़िरोज़ी", "ಟರ್ಕ್ವಾಯ್ಸ್"],
+    "Dark Green": ["गहरा हरा", "ಕಡು ಹಸಿರು"],
+    "Dark Blue": ["गहरा नीला", "ಕಡು ನೀಲಿ"],
+    "Light Gray": ["हल्का धूसर", "ತಿಳಿ ಬೂದು"],
+    "Light Pink": ["हल्का गुलाबी", "ತಿಳಿ ಗುಲಾಬಿ"],
+    "Dark Red": ["गहरा लाल", "ಕಡು ಕೆಂಪು"],
+    "Dark Orange": ["गहरा नारंगी", "ಕಡು ಕಿತ್ತಳೆ"],
+    "Plum": ["प्लम", "ಪ್ಲಮ್ ಬಣ್ಣ"],
+    "Tan": ["टैन", "ಟ್ಯಾನ್"],
+    "Lavender": ["लैवेंडर", "ಲ್ಯಾವೆಂಡರ್"],
+    "Mint": ["मिंट", "ಮಿಂಟ್"],
+    "Mustard": ["सरसों जैसा पीला", "ಸಾಸಿವೆ ಹಳದಿ"]
+};
+
 function getColourName(r, g, b) {
     let bestName = "Unknown";
     let bestDistance = Infinity;
@@ -187,31 +256,76 @@ function getColourName(r, g, b) {
             bestName = c[0];
         }
     }
-
     return bestName;
 }
 
-function speak(name) {
+function getSpokenName(name) {
+    const language = languageSelect.value;
+    if (language === "hi-IN") {
+        return translations[name] ? translations[name][0] : name;
+    }
+    if (language === "kn-IN") {
+        return translations[name] ? translations[name][1] : name;
+    }
+    return name;
+}
+
+function speak(name, force = false) {
     if (!voiceOn || !("speechSynthesis" in window)) {
         return;
     }
 
+    const spokenName = getSpokenName(name);
+    const language = languageSelect.value;
     const now = Date.now();
+    const spokenKey = language + "|" + spokenName;
 
-    if (name === lastSpoken && now - lastSpokenTime < 4000) {
+    if (!force && spokenKey === lastSpoken && now - lastSpokenTime < 4000) {
         return;
     }
 
-    lastSpoken = name;
+    lastSpoken = spokenKey;
     lastSpokenTime = now;
-
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(name);
-    utterance.lang = "en-US";
-    utterance.rate = 1;
+    const utterance = new SpeechSynthesisUtterance(spokenName);
+    utterance.lang = language;
+    utterance.rate = 0.9;
+
+    const voices = window.speechSynthesis.getVoices();
+    const languagePrefix = language.toLowerCase().split("-")[0];
+    const matchingVoice = voices.find(voice =>
+        voice.lang.toLowerCase() === language.toLowerCase()
+    ) || voices.find(voice =>
+        voice.lang.toLowerCase().startsWith(languagePrefix)
+    );
+
+    if (matchingVoice) {
+        utterance.voice = matchingVoice;
+    }
+
+    utterance.onerror = () => {
+        statusText.textContent =
+            "Colour detected. The selected voice may not be available on this device.";
+    };
 
     window.speechSynthesis.speak(utterance);
+}
+
+function showColour(r, g, b, source) {
+    const hex = "#" + [r, g, b]
+        .map(v => Math.max(0, Math.min(255, Math.round(v)))
+        .toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase();
+
+    const name = getColourName(r, g, b);
+    currentColourName = name;
+    colourName.textContent = name + " (" + getSpokenName(name) + ")";
+    hexCode.textContent = "HEX: " + hex;
+    swatch.style.backgroundColor = hex;
+    statusText.textContent = source;
+    speak(name);
 }
 
 function detectColour() {
@@ -236,11 +350,7 @@ function detectColour() {
     );
 
     const pixels = ctx.getImageData(45, 45, 10, 10).data;
-
-    let r = 0;
-    let g = 0;
-    let b = 0;
-
+    let r = 0, g = 0, b = 0;
     const count = pixels.length / 4;
 
     for (let i = 0; i < pixels.length; i += 4) {
@@ -249,25 +359,12 @@ function detectColour() {
         b += pixels[i + 2];
     }
 
-    r = Math.round(r / count);
-    g = Math.round(g / count);
-    b = Math.round(b / count);
-
-    const hex = "#" + [r, g, b]
-        .map(v => v.toString(16).padStart(2, "0"))
-        .join("")
-        .toUpperCase();
-
-    const name = getColourName(r, g, b);
-
-    colourName.textContent = name;
-    hexCode.textContent = "HEX: " + hex;
-    swatch.style.backgroundColor = hex;
-
-    statusText.textContent =
-        "Camera is active. Looking at the centre of the image.";
-
-    speak(name);
+    showColour(
+        Math.round(r / count),
+        Math.round(g / count),
+        Math.round(b / count),
+        "Camera is active. Detecting colour near the centre."
+    );
 }
 
 async function startCamera() {
@@ -280,13 +377,8 @@ async function startCamera() {
 
     try {
         statusText.textContent = "Requesting camera permission...";
-
         stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: {
-                    ideal: "environment"
-                }
-            },
+            video: { facingMode: { ideal: "environment" } },
             audio: false
         });
 
@@ -295,15 +387,12 @@ async function startCamera() {
 
         startButton.disabled = true;
         stopButton.disabled = false;
-
         statusText.textContent = "Camera started.";
 
-        if (timer) {
-            clearInterval(timer);
-        }
-
+        if (timer) clearInterval(timer);
         timer = setInterval(detectColour, 1500);
     } catch (error) {
+        stream = null;
         statusText.textContent =
             "Could not open camera. Allow camera permission and try again. " +
             error.message;
@@ -324,31 +413,119 @@ function stopCamera() {
     video.srcObject = null;
     startButton.disabled = false;
     stopButton.disabled = true;
-    statusText.textContent = "Camera stopped.";
 
     if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
     }
+
+    statusText.textContent = uploadedImage.hidden
+        ? "Camera stopped. Start the camera or upload an image."
+        : "Camera stopped. Click the uploaded image to sample a colour.";
 }
+
+imageInput.addEventListener("change", () => {
+    const file = imageInput.files && imageInput.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+        statusText.textContent = "Please choose a valid image file.";
+        imageInput.value = "";
+        return;
+    }
+
+    if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+    imageObjectUrl = URL.createObjectURL(file);
+
+    uploadedImage.onload = () => {
+        uploadedImage.hidden = false;
+        removeImageButton.hidden = false;
+        statusText.textContent =
+            "Image loaded. Click any point on the image to identify its colour.";
+    };
+
+    uploadedImage.onerror = () => {
+        statusText.textContent = "This image could not be opened. Try another image.";
+    };
+
+    uploadedImage.src = imageObjectUrl;
+});
+
+uploadedImage.addEventListener("click", event => {
+    if (!uploadedImage.naturalWidth || !uploadedImage.naturalHeight) return;
+
+    const rect = uploadedImage.getBoundingClientRect();
+    const scaleX = uploadedImage.naturalWidth / rect.width;
+    const scaleY = uploadedImage.naturalHeight / rect.height;
+    const x = Math.max(0, Math.min(
+        uploadedImage.naturalWidth - 1,
+        Math.floor((event.clientX - rect.left) * scaleX)
+    ));
+    const y = Math.max(0, Math.min(
+        uploadedImage.naturalHeight - 1,
+        Math.floor((event.clientY - rect.top) * scaleY)
+    ));
+
+    canvas.width = 1;
+    canvas.height = 1;
+    ctx.drawImage(uploadedImage, x, y, 1, 1, 0, 0, 1, 1);
+    const pixel = ctx.getImageData(0, 0, 1, 1).data;
+
+    showColour(
+        pixel[0], pixel[1], pixel[2],
+        "Colour sampled from uploaded image at the point you clicked."
+    );
+});
+
+removeImageButton.addEventListener("click", () => {
+    uploadedImage.hidden = true;
+    uploadedImage.removeAttribute("src");
+    removeImageButton.hidden = true;
+    imageInput.value = "";
+
+    if (imageObjectUrl) {
+        URL.revokeObjectURL(imageObjectUrl);
+        imageObjectUrl = null;
+    }
+
+    statusText.textContent = stream
+        ? "Camera is active."
+        : "Image removed. Start the camera or upload another image.";
+});
 
 startButton.addEventListener("click", startCamera);
 stopButton.addEventListener("click", stopCamera);
 
 voiceButton.addEventListener("click", () => {
     voiceOn = !voiceOn;
-
-    voiceButton.textContent =
-        voiceOn ? "🔊 Voice: ON" : "🔇 Voice: OFF";
+    voiceButton.textContent = voiceOn ? "🔊 Voice: ON" : "🔇 Voice: OFF";
 
     if (!voiceOn && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
     } else if (voiceOn) {
         lastSpoken = "";
-        statusText.textContent = "Voice enabled.";
+        statusText.textContent = currentColourName
+            ? "Voice enabled."
+            : "Voice enabled. Start the camera or upload an image.";
+        if (currentColourName) speak(currentColourName, true);
     }
 });
 
-window.addEventListener("pagehide", stopCamera);
+languageSelect.addEventListener("change", () => {
+    lastSpoken = "";
+    if (currentColourName && voiceOn) {
+        speak(currentColourName, true);
+    } else {
+        statusText.textContent =
+            "Voice language set to " +
+            languageSelect.options[languageSelect.selectedIndex].text + ".";
+    }
+});
+
+window.addEventListener("pagehide", () => {
+    if (timer) clearInterval(timer);
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+});
 </script>
 </body>
 </html>
